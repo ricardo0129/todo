@@ -70,7 +70,10 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
-    axum::serve(listener, app).await;
+    match axum::serve(listener, app).await {
+        Ok(()) => println!("server exited successfully"),
+        Err(err) => println!("got error {:?}", err),
+    }
 }
 
 // The query parameters for todos index
