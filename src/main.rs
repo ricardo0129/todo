@@ -43,10 +43,19 @@ async fn main() {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let db = Db::default();
-
     // Compose the routes
-    let app = Router::new()
+    let app = app();
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    tracing::debug!("listening on {}", listener.local_addr().unwrap());
+    match axum::serve(listener, app).await {
+        Ok(()) => println!("server exited successfully"),
+        Err(err) => println!("got error {:?}", err),
+    }
+}
+fn app() -> Router {
+    let db = Db::default();
+    Router::new()
         .route("/todos", get(todos_index).post(todos_create))
         .route("/todos/{id}", patch(todos_update).delete(todos_delete))
         // Add middleware to all routes
@@ -66,14 +75,7 @@ async fn main() {
                 .layer(TraceLayer::new_for_http())
                 .into_inner(),
         )
-        .with_state(db);
-
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    tracing::debug!("listening on {}", listener.local_addr().unwrap());
-    match axum::serve(listener, app).await {
-        Ok(()) => println!("server exited successfully"),
-        Err(err) => println!("got error {:?}", err),
-    }
+        .with_state(db)
 }
 
 // The query parameters for todos index
@@ -159,4 +161,23 @@ struct Todo {
     id: Uuid,
     text: String,
     completed: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
+    use tower::ServiceExt; // for `call`, `oneshot`, and `ready`
+    #[tokio::test]
+    async fn get_todos() {
+        let app = app();
+        let response = app
+            .oneshot(Request::get("/todos").body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
 }
