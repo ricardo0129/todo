@@ -33,7 +33,7 @@ async fn main() {
     // Compose the routes
     let app = app::app();
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
     match axum::serve(listener, app).await {
         Ok(()) => println!("server exited successfully"),
