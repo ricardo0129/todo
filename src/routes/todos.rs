@@ -2,27 +2,30 @@ use crate::models::todo::{CreateTodo, Todo, UpdateTodo};
 use axum::extract::{Path, Query};
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Deserialize;
-use std::{
-    collections::HashMap,
-    sync::{Arc, RwLock},
-};
-use uuid::Uuid;
-
-type Db = Arc<RwLock<HashMap<Uuid, Todo>>>;
+use sqlx::postgres::PgPool;
 
 pub async fn todos_create(
-    State(db): State<Db>,
+    State(db): State<PgPool>,
     Json(input): Json<CreateTodo>,
 ) -> impl IntoResponse {
     let todo = Todo {
-        id: Uuid::new_v4(),
+        id: -1,
         text: input.text,
         completed: false,
     };
+    let result = sqlx::query("INSERT INTO todos (text, completed) VALUES ($1, $2)")
+        .bind(&todo.text)
+        .bind(todo.completed)
+        .execute(&db)
+        .await;
 
-    db.write().unwrap().insert(todo.id, todo.clone());
-
-    (StatusCode::CREATED, Json(todo))
+    match result {
+        Ok(_) => (StatusCode::CREATED, Json(todo)),
+        Err(e) => {
+            println!("error inserting {e}");
+            (StatusCode::FORBIDDEN, Json(todo))
+        }
+    }
 }
 
 // The query parameters for todos index
@@ -32,11 +35,17 @@ pub struct Pagination {
     pub limit: Option<usize>,
 }
 
-pub async fn todos_index(pagination: Query<Pagination>, State(db): State<Db>) -> impl IntoResponse {
-    let todos = db.read().unwrap();
+pub async fn todos_index(
+    pagination: Query<Pagination>,
+    State(db): State<PgPool>,
+) -> impl IntoResponse {
+    let todos = sqlx::query_as::<_, Todo>("SELECT * FROM todos")
+        .fetch_all(&db)
+        .await
+        .expect("couldn't read");
 
     let todos = todos
-        .values()
+        .iter()
         .skip(pagination.offset.unwrap_or(0))
         .take(pagination.limit.unwrap_or(usize::MAX))
         .cloned()
@@ -44,10 +53,10 @@ pub async fn todos_index(pagination: Query<Pagination>, State(db): State<Db>) ->
 
     Json(todos)
 }
-
+/*
 pub async fn todos_update(
     Path(id): Path<Uuid>,
-    State(db): State<Db>,
+    State(db): State<PgPool>,
     Json(input): Json<UpdateTodo>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let mut todo = db
@@ -70,11 +79,19 @@ pub async fn todos_update(
     Ok(Json(todo))
 }
 
-pub async fn todos_delete(Path(id): Path<Uuid>, State(db): State<Db>) -> impl IntoResponse {
-    if db.write().unwrap().remove(&id).is_some() {
-        StatusCode::NO_CONTENT
-    } else {
-        StatusCode::NOT_FOUND
+*/
+
+pub async fn todos_delete(Path(id): Path<i64>, State(db): State<PgPool>) -> impl IntoResponse {
+    let result = sqlx::query("DELETE FROM todos WHERE id = $1")
+        .bind(id)
+        .execute(&db)
+        .await;
+    match result {
+        Ok(code) => {
+            println!("{:?}", code);
+            StatusCode::NO_CONTENT
+        }
+        Err(_) => StatusCode::NOT_FOUND,
     }
 }
 

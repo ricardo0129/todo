@@ -31,7 +31,7 @@ async fn main() {
         .init();
 
     // Compose the routes
-    let app = app::app();
+    let app = app::app().await;
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8080").await.unwrap();
     tracing::debug!("listening on {}", listener.local_addr().unwrap());
