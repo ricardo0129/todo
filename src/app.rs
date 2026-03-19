@@ -1,12 +1,11 @@
-use crate::models::todo::Todo;
 use crate::routes::health::health_check;
-use crate::routes::todos::{todos_create, todos_delete, todos_index};
+use crate::routes::todos::{todos_create, todos_delete, todos_index, todos_update};
 
 use axum::{
     Router,
     error_handling::HandleErrorLayer,
     http::StatusCode,
-    routing::{delete, get, patch},
+    routing::{get, patch},
 };
 use sqlx::postgres::{PgPool, PgPoolOptions};
 use std::time::Duration;
@@ -29,8 +28,7 @@ pub async fn app() -> Router {
     Router::new()
         .route("/health", get(health_check))
         .route("/todos", get(todos_index).post(todos_create))
-        //.route("/todos/{id}", patch(todos_update).delete(todos_delete))
-        .route("/todos/{id}", delete(todos_delete))
+        .route("/todos/{id}", patch(todos_update).delete(todos_delete))
         // Add middleware to all routes
         .layer(
             ServiceBuilder::new()

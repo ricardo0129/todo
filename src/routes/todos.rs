@@ -53,19 +53,16 @@ pub async fn todos_index(
 
     Json(todos)
 }
-/*
 pub async fn todos_update(
-    Path(id): Path<Uuid>,
+    Path(id): Path<i64>,
     State(db): State<PgPool>,
     Json(input): Json<UpdateTodo>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let mut todo = db
-        .read()
-        .unwrap()
-        .get(&id)
-        .cloned()
-        .ok_or(StatusCode::NOT_FOUND)?;
-
+    let mut todo: Todo = sqlx::query_as::<_, Todo>("SELECT * from todos WHERE id = $1")
+        .bind(id)
+        .fetch_one(&db)
+        .await
+        .expect("failed to find ");
     if let Some(text) = input.text {
         todo.text = text;
     }
@@ -73,13 +70,20 @@ pub async fn todos_update(
     if let Some(completed) = input.completed {
         todo.completed = completed;
     }
-
-    db.write().unwrap().insert(todo.id, todo.clone());
-
-    Ok(Json(todo))
+    let result = sqlx::query("UPDATE todos SET text=$1, completed=$2 WHERE id=$3")
+        .bind(&todo.text)
+        .bind(todo.completed)
+        .bind(id)
+        .execute(&db)
+        .await;
+    match result {
+        Ok(_) => Ok(Json(todo)),
+        Err(_) => {
+            println!("Unable to update");
+            Ok(Json(todo))
+        }
+    }
 }
-
-*/
 
 pub async fn todos_delete(Path(id): Path<i64>, State(db): State<PgPool>) -> impl IntoResponse {
     let result = sqlx::query("DELETE FROM todos WHERE id = $1")
@@ -87,11 +91,9 @@ pub async fn todos_delete(Path(id): Path<i64>, State(db): State<PgPool>) -> impl
         .execute(&db)
         .await;
     match result {
-        Ok(code) => {
-            println!("{:?}", code);
-            StatusCode::NO_CONTENT
-        }
-        Err(_) => StatusCode::NOT_FOUND,
+        Ok(rows) if rows.rows_affected() == 0 => StatusCode::NOT_FOUND,
+        Ok(_) => StatusCode::NO_CONTENT,
+        Err(_) => StatusCode::FORBIDDEN,
     }
 }
 
@@ -105,7 +107,7 @@ mod tests {
     use tower::ServiceExt; // for `call`, `oneshot`, and `ready`
     #[tokio::test]
     async fn get_todos() {
-        let app = app();
+        let app = app().await;
         let response = app
             .oneshot(Request::get("/todos").body(Body::empty()).unwrap())
             .await
