@@ -8,14 +8,13 @@ pub async fn todos_create(
     State(appstate): State<AppState>,
     Json(input): Json<CreateTodo>,
 ) -> impl IntoResponse {
-    let todo = Todo::create_todo(input.text, false);
-    let result = appstate.db.insert_todo(&todo).await;
+    let result = appstate.db.insert_todo(&input).await;
 
     match result {
-        Ok(todo) => (StatusCode::CREATED, Json(todo)),
+        Ok(todo) => (StatusCode::CREATED, Json(Some(todo))),
         Err(e) => {
             println!("error inserting {e}");
-            (StatusCode::FORBIDDEN, Json(todo))
+            (StatusCode::FORBIDDEN, Json(None))
         }
     }
 }
@@ -80,7 +79,7 @@ pub async fn todos_delete(
 #[cfg(test)]
 mod tests {
     use crate::app::build_app;
-    use crate::models::todo::Todo;
+    use crate::models::todo::{CreateTodo, Todo};
     use crate::routes::appstate::{AppState, TodoRepository};
     use axum::Router;
     use axum::{
@@ -118,12 +117,12 @@ mod tests {
         ) -> Result<u64, anyhow::Error> {
             Ok(1)
         }
-        async fn insert_todo(&self, todo: &Todo) -> Result<Todo, anyhow::Error> {
+        async fn insert_todo(&self, todo: &CreateTodo) -> Result<Todo, anyhow::Error> {
             Ok(Todo {
                 id: 1,
                 public_id: uuid::Uuid::from_u64_pair(128, 4),
                 text: todo.text.clone(),
-                completed: todo.completed,
+                completed: false,
             })
         }
         async fn delete_from_id(&self, _id: uuid::Uuid) -> Result<u64, anyhow::Error> {

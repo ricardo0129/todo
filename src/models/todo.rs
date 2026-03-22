@@ -11,17 +11,6 @@ pub struct Todo {
     pub completed: bool,
 }
 
-impl Todo {
-    pub fn create_todo(text: String, completed: bool) -> Self {
-        Self {
-            id: -1,
-            public_id: Uuid::from_u64_pair(0, 0),
-            text,
-            completed,
-        }
-    }
-}
-
 #[derive(FromRow, Debug, Deserialize)]
 pub struct CreateTodo {
     pub text: String,
