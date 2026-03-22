@@ -11,7 +11,7 @@ tower = { version = "0.5.2", features = ["util", "timeout"] }
 tower-http = { version = "0.6.1", features = ["add-extension", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "1.0", features = ["serde", "v4"] }
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "any", "postgres"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "any", "postgres", "uuid"] }
 async-trait = "*"
 anyhow = "*"
+uuid = { version = "*", features = ["v4", "serde"] }

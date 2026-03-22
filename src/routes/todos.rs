@@ -8,15 +8,11 @@ pub async fn todos_create(
     State(appstate): State<AppState>,
     Json(input): Json<CreateTodo>,
 ) -> impl IntoResponse {
-    let todo = Todo {
-        id: -1,
-        text: input.text,
-        completed: false,
-    };
+    let todo = Todo::create_todo(input.text, false);
     let result = appstate.db.insert_todo(&todo).await;
 
     match result {
-        Ok(_) => (StatusCode::CREATED, Json(todo)),
+        Ok(todo) => (StatusCode::CREATED, Json(todo)),
         Err(e) => {
             println!("error inserting {e}");
             (StatusCode::FORBIDDEN, Json(todo))
@@ -47,7 +43,7 @@ pub async fn todos_index(
     Json(todos)
 }
 pub async fn todos_update(
-    Path(id): Path<i64>,
+    Path(id): Path<uuid::Uuid>,
     State(appstate): State<AppState>,
     Json(input): Json<UpdateTodo>,
 ) -> Result<impl IntoResponse, StatusCode> {
@@ -70,7 +66,7 @@ pub async fn todos_update(
 }
 
 pub async fn todos_delete(
-    Path(id): Path<i64>,
+    Path(id): Path<uuid::Uuid>,
     State(appstate): State<AppState>,
 ) -> impl IntoResponse {
     let result = appstate.db.delete_from_id(id).await;
@@ -85,8 +81,8 @@ pub async fn todos_delete(
 mod tests {
     use crate::app::build_app;
     use crate::models::todo::Todo;
-    use crate::routes::appstate::AppState;
-    use crate::routes::appstate::TodoRepository;
+    use crate::routes::appstate::{AppState, TodoRepository};
+    use axum::Router;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
@@ -101,35 +97,50 @@ mod tests {
         async fn get_all(&self) -> Result<Vec<Todo>, anyhow::Error> {
             Ok(vec![Todo {
                 id: 1,
+                public_id: uuid::Uuid::from_u64_pair(128, 4),
                 text: "Mock".into(),
                 completed: false,
             }])
         }
 
-        async fn get_by_id(&self, _id: i64) -> Result<Todo, anyhow::Error> {
+        async fn get_by_id(&self, id: uuid::Uuid) -> Result<Todo, anyhow::Error> {
             Ok(Todo {
                 id: 1,
+                public_id: id,
                 text: "Mock".into(),
                 completed: false,
             })
         }
-        async fn update_with_id(&self, _id: i64, _todo: &Todo) -> Result<u64, anyhow::Error> {
+        async fn update_with_id(
+            &self,
+            _id: uuid::Uuid,
+            _todo: &Todo,
+        ) -> Result<u64, anyhow::Error> {
             Ok(1)
         }
-        async fn insert_todo(&self, _todo: &Todo) -> Result<u64, anyhow::Error> {
-            Ok(2)
+        async fn insert_todo(&self, todo: &Todo) -> Result<Todo, anyhow::Error> {
+            Ok(Todo {
+                id: 1,
+                public_id: uuid::Uuid::from_u64_pair(128, 4),
+                text: todo.text.clone(),
+                completed: todo.completed,
+            })
         }
-        async fn delete_from_id(&self, _id: i64) -> Result<u64, anyhow::Error> {
+        async fn delete_from_id(&self, _id: uuid::Uuid) -> Result<u64, anyhow::Error> {
             Ok(3)
         }
     }
 
-    #[tokio::test]
-    async fn get_todos() {
+    async fn build_test_router() -> Router {
         let state = AppState {
             db: Arc::new(MockRepository),
         };
-        let app = build_app(state).await;
+        build_app(state).await
+    }
+
+    #[tokio::test]
+    async fn get_todos() {
+        let app = build_test_router().await;
         let response = app
             .oneshot(Request::get("/todos").body(Body::empty()).unwrap())
             .await

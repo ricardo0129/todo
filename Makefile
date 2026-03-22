@@ -6,3 +6,6 @@ start:
 
 stop:
 	docker stop my-running-app
+
+test:
+	cargo test

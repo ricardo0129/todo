@@ -1,11 +1,25 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use uuid::Uuid;
 
 #[derive(FromRow, Debug, Serialize, Clone)]
 pub struct Todo {
     pub id: i64,
+    #[sqlx(try_from = "sqlx::types::Uuid")]
+    pub public_id: Uuid,
     pub text: String,
     pub completed: bool,
+}
+
+impl Todo {
+    pub fn create_todo(text: String, completed: bool) -> Self {
+        Self {
+            id: -1,
+            public_id: Uuid::from_u64_pair(0, 0),
+            text,
+            completed,
+        }
+    }
 }
 
 #[derive(FromRow, Debug, Deserialize)]
