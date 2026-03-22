@@ -1,11 +1,11 @@
 use crate::models::todo::{CreateTodo, Todo, UpdateTodo};
+use crate::routes::appstate::AppState;
 use axum::extract::{Path, Query};
 use axum::{Json, extract::State, http::StatusCode, response::IntoResponse};
 use serde::Deserialize;
-use sqlx::postgres::PgPool;
 
 pub async fn todos_create(
-    State(db): State<PgPool>,
+    State(appstate): State<AppState>,
     Json(input): Json<CreateTodo>,
 ) -> impl IntoResponse {
     let todo = Todo {
@@ -13,11 +13,7 @@ pub async fn todos_create(
         text: input.text,
         completed: false,
     };
-    let result = sqlx::query("INSERT INTO todos (text, completed) VALUES ($1, $2)")
-        .bind(&todo.text)
-        .bind(todo.completed)
-        .execute(&db)
-        .await;
+    let result = appstate.db.insert_todo(&todo).await;
 
     match result {
         Ok(_) => (StatusCode::CREATED, Json(todo)),
@@ -37,12 +33,9 @@ pub struct Pagination {
 
 pub async fn todos_index(
     pagination: Query<Pagination>,
-    State(db): State<PgPool>,
+    State(appstate): State<AppState>,
 ) -> impl IntoResponse {
-    let todos = sqlx::query_as::<_, Todo>("SELECT * FROM todos")
-        .fetch_all(&db)
-        .await
-        .expect("couldn't read");
+    let todos = appstate.db.get_all().await.expect("couldn't read");
 
     let todos = todos
         .iter()
@@ -55,14 +48,10 @@ pub async fn todos_index(
 }
 pub async fn todos_update(
     Path(id): Path<i64>,
-    State(db): State<PgPool>,
+    State(appstate): State<AppState>,
     Json(input): Json<UpdateTodo>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let mut todo: Todo = sqlx::query_as::<_, Todo>("SELECT * from todos WHERE id = $1")
-        .bind(id)
-        .fetch_one(&db)
-        .await
-        .expect("failed to find ");
+    let mut todo: Todo = appstate.db.get_by_id(id).await.expect("failed to find ");
     if let Some(text) = input.text {
         todo.text = text;
     }
@@ -70,12 +59,7 @@ pub async fn todos_update(
     if let Some(completed) = input.completed {
         todo.completed = completed;
     }
-    let result = sqlx::query("UPDATE todos SET text=$1, completed=$2 WHERE id=$3")
-        .bind(&todo.text)
-        .bind(todo.completed)
-        .bind(id)
-        .execute(&db)
-        .await;
+    let result = appstate.db.update_with_id(id, &todo).await;
     match result {
         Ok(_) => Ok(Json(todo)),
         Err(_) => {
@@ -85,13 +69,13 @@ pub async fn todos_update(
     }
 }
 
-pub async fn todos_delete(Path(id): Path<i64>, State(db): State<PgPool>) -> impl IntoResponse {
-    let result = sqlx::query("DELETE FROM todos WHERE id = $1")
-        .bind(id)
-        .execute(&db)
-        .await;
+pub async fn todos_delete(
+    Path(id): Path<i64>,
+    State(appstate): State<AppState>,
+) -> impl IntoResponse {
+    let result = appstate.db.delete_from_id(id).await;
     match result {
-        Ok(rows) if rows.rows_affected() == 0 => StatusCode::NOT_FOUND,
+        Ok(0) => StatusCode::NOT_FOUND,
         Ok(_) => StatusCode::NO_CONTENT,
         Err(_) => StatusCode::FORBIDDEN,
     }
@@ -99,15 +83,53 @@ pub async fn todos_delete(Path(id): Path<i64>, State(db): State<PgPool>) -> impl
 
 #[cfg(test)]
 mod tests {
-    use crate::app::app;
+    use crate::app::build_app;
+    use crate::models::todo::Todo;
+    use crate::routes::appstate::AppState;
+    use crate::routes::appstate::TodoRepository;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
     };
+    use std::sync::Arc;
     use tower::ServiceExt; // for `call`, `oneshot`, and `ready`
+    #[derive(Clone)]
+    struct MockRepository;
+
+    #[async_trait::async_trait]
+    impl TodoRepository for MockRepository {
+        async fn get_all(&self) -> Result<Vec<Todo>, anyhow::Error> {
+            Ok(vec![Todo {
+                id: 1,
+                text: "Mock".into(),
+                completed: false,
+            }])
+        }
+
+        async fn get_by_id(&self, _id: i64) -> Result<Todo, anyhow::Error> {
+            Ok(Todo {
+                id: 1,
+                text: "Mock".into(),
+                completed: false,
+            })
+        }
+        async fn update_with_id(&self, _id: i64, _todo: &Todo) -> Result<u64, anyhow::Error> {
+            Ok(1)
+        }
+        async fn insert_todo(&self, _todo: &Todo) -> Result<u64, anyhow::Error> {
+            Ok(2)
+        }
+        async fn delete_from_id(&self, _id: i64) -> Result<u64, anyhow::Error> {
+            Ok(3)
+        }
+    }
+
     #[tokio::test]
     async fn get_todos() {
-        let app = app().await;
+        let state = AppState {
+            db: Arc::new(MockRepository),
+        };
+        let app = build_app(state).await;
         let response = app
             .oneshot(Request::get("/todos").body(Body::empty()).unwrap())
             .await
