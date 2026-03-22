@@ -75,7 +75,7 @@ pub async fn todos_delete(
 ) -> impl IntoResponse {
     let result = appstate.db.delete_from_id(id).await;
     match result {
-        Ok(rows) if rows.rows_affected() == 0 => StatusCode::NOT_FOUND,
+        Ok(0) => StatusCode::NOT_FOUND,
         Ok(_) => StatusCode::NO_CONTENT,
         Err(_) => StatusCode::FORBIDDEN,
     }
@@ -83,15 +83,53 @@ pub async fn todos_delete(
 
 #[cfg(test)]
 mod tests {
-    use crate::app::app;
+    use crate::app::build_app;
+    use crate::models::todo::Todo;
+    use crate::routes::appstate::AppState;
+    use crate::routes::appstate::TodoRepository;
     use axum::{
         body::Body,
         http::{Request, StatusCode},
     };
+    use std::sync::Arc;
     use tower::ServiceExt; // for `call`, `oneshot`, and `ready`
+    #[derive(Clone)]
+    struct MockRepository;
+
+    #[async_trait::async_trait]
+    impl TodoRepository for MockRepository {
+        async fn get_all(&self) -> Result<Vec<Todo>, anyhow::Error> {
+            Ok(vec![Todo {
+                id: 1,
+                text: "Mock".into(),
+                completed: false,
+            }])
+        }
+
+        async fn get_by_id(&self, _id: i64) -> Result<Todo, anyhow::Error> {
+            Ok(Todo {
+                id: 1,
+                text: "Mock".into(),
+                completed: false,
+            })
+        }
+        async fn update_with_id(&self, _id: i64, _todo: &Todo) -> Result<u64, anyhow::Error> {
+            Ok(1)
+        }
+        async fn insert_todo(&self, _todo: &Todo) -> Result<u64, anyhow::Error> {
+            Ok(2)
+        }
+        async fn delete_from_id(&self, _id: i64) -> Result<u64, anyhow::Error> {
+            Ok(3)
+        }
+    }
+
     #[tokio::test]
     async fn get_todos() {
-        let app = app().await;
+        let state = AppState {
+            db: Arc::new(MockRepository),
+        };
+        let app = build_app(state).await;
         let response = app
             .oneshot(Request::get("/todos").body(Body::empty()).unwrap())
             .await
